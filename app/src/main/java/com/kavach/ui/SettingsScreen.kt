@@ -70,12 +70,30 @@ fun SettingsScreen(vm: MainViewModel) {
         }
         item {
             Text("Kavach never sends your traffic to a remote server. The VPN is local and " +
-                 "carries only DNS. Some apps and services that use their own DNS, or that serve " +
-                 "ads from the same domain as their content (e.g. YouTube), cannot be filtered at " +
-                 "the DNS level.",
+                 "carries only DNS.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp))
+        }
+        item {
+            Text("What DNS blocking can and cannot do:",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 8.dp))
+            Text("CAN block: ads and trackers that come from separate ad domains " +
+                 "(doubleclick, ad networks, analytics, and most in-app ad SDKs). " +
+                 "CANNOT block: ads served from the same domain as the content you are reading - " +
+                 "Facebook/Instagram sponsored posts, YouTube in-app video ads, and sponsored " +
+                 "content inside social feeds. That is a limit of every DNS blocker, not a bug.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            Text("If blocking seems to do nothing, make sure Android's Private DNS is set to " +
+                 "Automatic (Settings > Network > Private DNS). Private DNS (DoT) sends DNS " +
+                 "directly to a provider and bypasses this filter.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

@@ -46,7 +46,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val installedApps: StateFlow<List<AppInfo>> = _installedApps
 
     init {
-        viewModelScope.launch { seedSourcesIfEmpty() }
+        viewModelScope.launch {
+            seedSourcesIfEmpty()
+            // First run: fetch the real blocklists automatically.
+            if (!container.repository.hasCachedLists()) updateBlocklists()
+        }
         viewModelScope.launch { loadInstalledApps() }
     }
 
@@ -100,9 +104,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         db.sources().upsert(src.copy(enabled = !src.enabled))
     }
 
+    private val _updateStatus = MutableStateFlow<String?>(null)
+    val updateStatus: StateFlow<String?> = _updateStatus
+
     fun updateBlocklists() = viewModelScope.launch {
-        container.repository.updateAll()
+        _updateStatus.value = "Downloading blocklists..."
+        val r = container.repository.updateAll()
         settingsStore.setLastUpdate(System.currentTimeMillis())
+        _updateStatus.value = buildString {
+            append("Loaded ${r.totalDomains} domains from ${r.sourcesOk} sources.")
+            if (r.errors.isNotEmpty()) {
+                append("\nSome sources failed: ")
+                append(r.errors.joinToString("; "))
+            }
+        }
     }
 
     fun clearLogs() = viewModelScope.launch { db.logs().clear() }

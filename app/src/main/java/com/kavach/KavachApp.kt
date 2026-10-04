@@ -4,6 +4,7 @@ import android.app.Application
 import com.kavach.data.BlocklistRepository
 import com.kavach.data.KavachDatabase
 import com.kavach.data.SettingsStore
+import com.kavach.work.BlocklistUpdateWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -25,6 +26,7 @@ class KavachApp : Application() {
         settings = SettingsStore(this)
         repository = BlocklistRepository(this)
         appScope.launch { repository.reload() }
+        BlocklistUpdateWorker.schedule(this)
     }
 
     companion object {

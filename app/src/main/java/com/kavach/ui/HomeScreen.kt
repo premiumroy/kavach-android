@@ -26,7 +26,7 @@ fun HomeScreen(vm: MainViewModel) {
     val failed by vm.dnsFailed.collectAsState()
     val upstream by vm.upstream.collectAsState()
     val testResult by vm.testResult.collectAsState()
-    var updating by remember { mutableStateOf(false) }
+    val updateStatus by vm.updateStatus.collectAsState()
 
     val consent = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -78,11 +78,20 @@ fun HomeScreen(vm: MainViewModel) {
                 Spacer(Modifier.height(6.dp))
                 Text("${stats.domainCount} domains loaded from ${stats.sources} downloaded lists",
                     style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(10.dp))
-                Button(onClick = { updating = true; vm.updateBlocklists() }, enabled = !updating) {
-                    Text(if (updating) "Updating..." else "Update blocklists")
+                if (stats.domainCount < 1000) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Only the small built-in starter list is active. Tap below to download the real blocklists.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
-                LaunchedEffect(stats) { if (updating && stats.loaded) updating = false }
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = { vm.updateBlocklists() }) { Text("Update blocklists") }
+                updateStatus?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
 
