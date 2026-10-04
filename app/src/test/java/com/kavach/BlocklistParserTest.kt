@@ -23,8 +23,8 @@ class BlocklistParserTest {
 
     @Test fun abpFormat() {
         assertEquals("doubleclick.net", p("||doubleclick.net^"))
-        assertEquals("ads.example.com", p("||ads.example.com^$third-party"))
-        assertEquals("tracker.example.net", p("||tracker.example.net^$important,domain=x.com"))
+        assertEquals("ads.example.com", p("||ads.example.com^\$third-party"))
+        assertEquals("tracker.example.net", p("||tracker.example.net^\$important,domain=x.com"))
     }
 
     @Test fun rejectsJunk() {
