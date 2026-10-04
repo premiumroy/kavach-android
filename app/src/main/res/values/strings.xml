@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Kavach</string>
+    <string name="channel_name">Protection status</string>
+    <string name="channel_desc">Shows when Kavach is filtering ads and trackers</string>
+    <string name="notif_title">Kavach is protecting you</string>
+    <string name="notif_text">Blocking ads and trackers via local DNS filter</string>
+</resources>

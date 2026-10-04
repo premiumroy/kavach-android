@@ -1,0 +1,10 @@
+{
+  "note": "Reference copy of the default blocklist sources. The app seeds these into its database on first run; see BlocklistSources.kt.",
+  "sources": [
+    { "id": "stevenblack", "name": "StevenBlack unified hosts", "url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts", "format": "hosts" },
+    { "id": "oisd", "name": "OISD basic", "url": "https://big.oisd.nl/", "format": "plain" },
+    { "id": "adaway", "name": "AdAway hosts", "url": "https://adaway.org/hosts.txt", "format": "hosts" },
+    { "id": "peterlowe", "name": "Peter Lowe ad/tracker servers", "url": "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext", "format": "hosts" },
+    { "id": "1hosts_lite", "name": "1Hosts Lite", "url": "https://raw.githubusercontent.com/badmojr/1Hosts/master/Lite/hosts.txt", "format": "hosts" }
+  ]
+}
