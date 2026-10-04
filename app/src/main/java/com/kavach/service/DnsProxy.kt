@@ -14,12 +14,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Reads DNS packets from the tun device, blocks listed domains, and forwards
- * everything else to the upstream resolver.
+ * Reads DNS packets from the tun device, answers listed domains with a sinkhole,
+ * and forwards everything else to a real upstream resolver.
  *
- * Threading: one reader thread + a small worker pool. Writes back to the tun are
- * serialised. Upstream sockets are `protect()`ed so they do not loop through
- * our own tunnel.
+ * Every query gets a reply: blocked -> 0.0.0.0, allowed -> upstream answer,
+ * upstream failure -> SERVFAIL. The client is never left hanging.
  */
 class DnsProxy(
     tunFd: ParcelFileDescriptor,
@@ -57,24 +56,39 @@ class DnsProxy(
     private fun handle(packet: ByteArray) {
         val parsed = IpPacket.parse(packet, packet.size) ?: return
         val name = DnsMessage.queryName(parsed.payload)
+
         if (name != null && repo.isBlocked(name)) {
-            val response = DnsMessage.buildBlockedResponse(parsed.payload) ?: return
-            write(IpPacket.buildReply(response, parsed, ipId.incrementAndGet()))
-            onBlocked(name)
+            val response = DnsMessage.buildBlockedResponse(parsed.payload)
+            if (response != null) {
+                write(IpPacket.buildReply(response, parsed, ipId.incrementAndGet()))
+                DnsStats.blocked.value += 1
+                onBlocked(name)
+            }
             return
         }
-        val upstream = forward(parsed.payload) ?: return
-        write(IpPacket.buildReply(upstream, parsed, ipId.incrementAndGet()))
+
+        val upstream = forward(parsed.payload)
+        if (upstream != null) {
+            write(IpPacket.buildReply(upstream, parsed, ipId.incrementAndGet()))
+            DnsStats.forwarded.value += 1
+        } else {
+            // Never leave the client hanging: answer SERVFAIL so it retries fast.
+            val servfail = DnsMessage.buildServfail(parsed.payload)
+            if (servfail != null) {
+                write(IpPacket.buildReply(servfail, parsed, ipId.incrementAndGet()))
+            }
+            DnsStats.failed.value += 1
+        }
     }
 
     /** Send the raw DNS query upstream and return the raw response, or null. */
     private fun forward(query: ByteArray): ByteArray? {
-        val servers = upstreamProvider().ifEmpty { listOf("1.1.1.1", "8.8.8.8") }
+        val servers = upstreamProvider()
         for (server in servers) {
             try {
                 DatagramSocket().use { socket ->
-                    protectSocket(socket)
-                    socket.soTimeout = 4_000
+                    protectSocket(socket)          // do not loop back through our tunnel
+                    socket.soTimeout = 3_000
                     val addr = InetAddress.getByName(server)
                     socket.send(DatagramPacket(query, query.size, addr, 53))
                     val respBuf = ByteArray(4096)

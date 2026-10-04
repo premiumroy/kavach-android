@@ -68,4 +68,21 @@ object DnsMessage {
         }
         return out.toByteArray()
     }
+
+    /**
+     * Build a SERVFAIL response (RCODE=2). Sent when upstream resolution fails so
+     * the client fails fast instead of hanging (which would look like "no internet").
+     */
+    fun buildServfail(query: ByteArray): ByteArray? {
+        val qEnd = questionEnd(query) ?: return null
+        val out = ByteArrayOutputStream()
+        out.write(query[0].toInt()); out.write(query[1].toInt())
+        out.write(0x81); out.write(0x82)          // QR=1 RD=1 RA=1 RCODE=2 (SERVFAIL)
+        out.write(0x00); out.write(0x01)          // QDCOUNT = 1
+        out.write(0x00); out.write(0x00)          // ANCOUNT
+        out.write(0x00); out.write(0x00)          // NSCOUNT
+        out.write(0x00); out.write(0x00)          // ARCOUNT
+        out.write(query, HEADER_LEN, qEnd - HEADER_LEN)
+        return out.toByteArray()
+    }
 }

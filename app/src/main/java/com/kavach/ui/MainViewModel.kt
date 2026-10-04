@@ -6,9 +6,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kavach.KavachApp
 import com.kavach.data.*
+import com.kavach.service.DnsStats
 import com.kavach.service.KavachVpnService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.InetAddress
 
 data class AppInfo(val packageName: String, val label: String)
 
@@ -24,6 +28,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val stats = container.repository.stats
     val running = KavachVpnService.running
     val blockedCount = KavachVpnService.blocked
+    val dnsBlocked = DnsStats.blocked
+    val dnsForwarded = DnsStats.forwarded
+    val dnsFailed = DnsStats.failed
+    val upstream = DnsStats.upstream
 
     val rules: StateFlow<List<RuleEntity>> =
         db.rules().observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -100,4 +108,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearLogs() = viewModelScope.launch { db.logs().clear() }
 
     fun reloadRules() = viewModelScope.launch { container.repository.reload() }
+
+    private val _testResult = MutableStateFlow<String?>(null)
+    val testResult: StateFlow<String?> = _testResult
+
+    /** Resolve a known ad domain through the system resolver (which goes through
+     *  our filter) and report whether it was blocked. */
+    fun testBlocking() = viewModelScope.launch {
+        _testResult.value = "Testing..."
+        _testResult.value = withContext(Dispatchers.IO) {
+            val host = "doubleclick.net"
+            try {
+                val addr = InetAddress.getByName(host).hostAddress ?: "?"
+                if (addr == "0.0.0.0" || addr == "::" || addr.all { it == '0' || it == ':' })
+                    "BLOCKED - $host -> $addr. The filter is working."
+                else
+                    "NOT blocked - $host resolved to $addr. Filter may be off."
+            } catch (e: Exception) {
+                "BLOCKED - $host lookup failed (${e.javaClass.simpleName}). The filter is working."
+            }
+        }
+    }
 }

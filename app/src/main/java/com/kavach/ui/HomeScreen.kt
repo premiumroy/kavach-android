@@ -22,6 +22,10 @@ fun HomeScreen(vm: MainViewModel) {
     val running by vm.running.collectAsState()
     val blocked by vm.blockedCount.collectAsState()
     val stats by vm.stats.collectAsState()
+    val forwarded by vm.dnsForwarded.collectAsState()
+    val failed by vm.dnsFailed.collectAsState()
+    val upstream by vm.upstream.collectAsState()
+    val testResult by vm.testResult.collectAsState()
     var updating by remember { mutableStateOf(false) }
 
     val consent = rememberLauncherForActivityResult(
@@ -79,6 +83,31 @@ fun HomeScreen(vm: MainViewModel) {
                     Text(if (updating) "Updating..." else "Update blocklists")
                 }
                 LaunchedEffect(stats) { if (updating && stats.loaded) updating = false }
+            }
+        }
+
+        Card {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(6.dp))
+                Text("Blocked: $blocked   Allowed: $forwarded   Failed: $failed",
+                    style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Upstream DNS: " + (if (upstream.isEmpty()) "not detected yet" else upstream.joinToString(", ")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = { vm.testBlocking() }) { Text("Test ad blocking") }
+                testResult?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Allowed should be much larger than Failed. If Failed keeps climbing, " +
+                     "your network is blocking our DNS servers - set a different upstream DNS in Settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 

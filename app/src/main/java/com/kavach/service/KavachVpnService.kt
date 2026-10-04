@@ -1,10 +1,11 @@
 package com.kavach.service
 
-import android.app.Service
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
-import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.kavach.KavachApp
 import com.kavach.data.KavachSettings
@@ -19,15 +20,29 @@ import kotlinx.coroutines.runBlocking
 /**
  * The DNS-filtering VPN service.
  *
- * It is a *local* VPN: the tun only carries DNS traffic to our fake resolver.
- * No traffic is sent to any remote server, and no user data leaves the device.
+ * A *local* VPN: the tun carries only DNS traffic to our fake resolver; nothing
+ * is sent to any remote server.
+ *
+ * Upstream resolvers are taken from the device's real (non-VPN) network, captured
+ * before the tunnel is established and refreshed on network changes. This is
+ * essential - asking the system for DNS *after* the tunnel is up returns our own
+ * fake resolver and would loop forever, which kills all connectivity.
  */
 class KavachVpnService : VpnService() {
 
     private var tun: ParcelFileDescriptor? = null
     private var proxy: DnsProxy? = null
-    private var blockedToday = 0
+    private var blockedSession = 0
     private var sinceNotification = 0
+
+    @Volatile private var upstreamDns: List<String> = emptyList()
+    private var callbackRegistered = false
+
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = refreshUpstream()
+        override fun onLinkPropertiesChanged(network: Network, lp: LinkProperties) = refreshUpstream()
+        override fun onLost(network: Network) = refreshUpstream()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -45,6 +60,12 @@ class KavachVpnService : VpnService() {
         val app = KavachApp.from(this)
         val settings = runBlocking { app.settings.flow.first() }
 
+        // Capture the real DNS servers BEFORE the tunnel exists.
+        upstreamDns = queryUnderlyingDns()
+        DnsStats.upstream.value = upstreamDns
+        DnsStats.reset()
+        registerNetworkCallback()
+
         val builder = Builder()
             .setSession("Kavach")
             .setMtu(1500)
@@ -61,7 +82,6 @@ class KavachVpnService : VpnService() {
             }
         }
 
-        // Per-app: apps the user chose to bypass are allowed outside the tunnel.
         for (pkg in settings.bypassedApps) {
             runCatching { builder.addDisallowedApplication(pkg) }
         }
@@ -78,11 +98,14 @@ class KavachVpnService : VpnService() {
         tun = fd
 
         Notification.ensureChannel(this)
-        startForeground(Notification.NOTIFICATION_ID, Notification.build(this, blockedToday))
+        startForeground(Notification.NOTIFICATION_ID, Notification.build(this, blockedSession))
 
         val upstreamProvider: () -> List<String> = {
-            if (settings.upstreamDns.isNotBlank()) listOf(settings.upstreamDns.trim())
-            else systemDnsServers()
+            val custom = settings.upstreamDns.trim()
+            val base = if (custom.isNotBlank()) listOf(custom) else upstreamDns
+            (base + FALLBACK_DNS)
+                .filter { it.isNotBlank() && it != IPV4_DNS && it != IPV6_DNS }
+                .distinct()
         }
 
         val p = DnsProxy(
@@ -100,8 +123,8 @@ class KavachVpnService : VpnService() {
     }
 
     private fun recordBlock(domain: String, settings: KavachSettings) {
-        blockedToday++
-        _blocked.value = blockedToday
+        blockedSession++
+        _blocked.value = blockedSession
         if (settings.logBlocked) {
             KavachApp.from(this).appScope.launch {
                 runCatching {
@@ -112,12 +135,13 @@ class KavachVpnService : VpnService() {
         }
         if (++sinceNotification >= 5) {
             sinceNotification = 0
-            val mgr = getSystemService(android.app.NotificationManager::class.java)
-            mgr.notify(Notification.NOTIFICATION_ID, Notification.build(this, blockedToday))
+            getSystemService(android.app.NotificationManager::class.java)
+                .notify(Notification.NOTIFICATION_ID, Notification.build(this, blockedSession))
         }
     }
 
     private fun stopVpn() {
+        unregisterNetworkCallback()
         proxy?.stop()
         proxy = null
         runCatching { tun?.close() }
@@ -133,6 +157,7 @@ class KavachVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        unregisterNetworkCallback()
         proxy?.stop()
         proxy = null
         runCatching { tun?.close() }
@@ -141,12 +166,50 @@ class KavachVpnService : VpnService() {
         super.onDestroy()
     }
 
-    /** DNS servers of the active network, used as the upstream resolver. */
-    private fun systemDnsServers(): List<String> {
+    // ---- upstream resolution ------------------------------------------------
+
+    private fun registerNetworkCallback() {
+        if (callbackRegistered) return
+        runCatching {
+            val cm = getSystemService(ConnectivityManager::class.java) ?: return
+            cm.registerDefaultNetworkCallback(netCallback)
+            callbackRegistered = true
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        if (!callbackRegistered) return
+        runCatching {
+            getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(netCallback)
+        }
+        callbackRegistered = false
+    }
+
+    private fun refreshUpstream() {
+        val dns = queryUnderlyingDns()
+        if (dns.isNotEmpty()) {
+            upstreamDns = dns
+            DnsStats.upstream.value = dns
+        }
+    }
+
+    /**
+     * DNS servers of every real (non-VPN) network. VPN networks are skipped so we
+     * never point at our own fake resolver.
+     */
+    private fun queryUnderlyingDns(): List<String> {
         val cm = getSystemService(ConnectivityManager::class.java) ?: return emptyList()
-        val network = cm.activeNetwork ?: return emptyList()
-        val lp = cm.getLinkProperties(network) ?: return emptyList()
-        return lp.dnsServers.mapNotNull { it.hostAddress }.filter { it.isNotBlank() }
+        val out = LinkedHashSet<String>()
+        for (network in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
+            val lp = cm.getLinkProperties(network) ?: continue
+            for (addr in lp.dnsServers) {
+                addr.hostAddress?.takeIf { it.isNotBlank() }?.let { out.add(it) }
+            }
+        }
+        return out.toList()
     }
 
     companion object {
@@ -157,6 +220,9 @@ class KavachVpnService : VpnService() {
         private const val IPV4_DNS = "10.111.222.2"
         private const val IPV6_ADDRESS = "fd00:1:2:3::1"
         private const val IPV6_DNS = "fd00:1:2:3::2"
+
+        // Used only if the device's own resolvers are unavailable.
+        private val FALLBACK_DNS = listOf("1.1.1.1", "8.8.8.8", "9.9.9.9")
 
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running
