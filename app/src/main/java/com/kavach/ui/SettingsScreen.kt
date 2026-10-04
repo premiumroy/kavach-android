@@ -88,6 +88,13 @@ fun SettingsScreen(vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
+            Text("Built-in blocklist derived from StevenBlack/hosts (MIT). Live lists: " +
+                 "HaGeZi, StevenBlack, OISD, AdAway, Peter Lowe.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp))
+        }
+        item {
             Text("If blocking seems to do nothing, make sure Android's Private DNS is set to " +
                  "Automatic (Settings > Network > Private DNS). Private DNS (DoT) sends DNS " +
                  "directly to a provider and bypasses this filter.",

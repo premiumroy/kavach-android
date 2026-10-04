@@ -82,8 +82,12 @@ class KavachVpnService : VpnService() {
             }
         }
 
+        // Keep Kavach's OWN traffic out of the tunnel. Its blocklist downloads
+        // must never depend on the filter that is still starting up.
+        runCatching { builder.addDisallowedApplication(packageName) }
+
         for (pkg in settings.bypassedApps) {
-            runCatching { builder.addDisallowedApplication(pkg) }
+            if (pkg != packageName) runCatching { builder.addDisallowedApplication(pkg) }
         }
 
         val fd = try {
@@ -222,7 +226,10 @@ class KavachVpnService : VpnService() {
         private const val IPV6_DNS = "fd00:1:2:3::2"
 
         // Used only if the device's own resolvers are unavailable.
-        private val FALLBACK_DNS = listOf("1.1.1.1", "8.8.8.8", "9.9.9.9")
+        private val FALLBACK_DNS = listOf(
+            "1.1.1.1", "8.8.8.8", "9.9.9.9",
+            "2606:4700:4700::1111", "2001:4860:4860::8888",
+        )
 
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running

@@ -9,6 +9,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -34,6 +35,9 @@ class DnsProxy(
     private val ipId = AtomicInteger(0)
 
     @Volatile private var running = true
+
+    private val ANY_V4 = InetAddress.getByName("0.0.0.0")
+    private val ANY_V6 = InetAddress.getByName("::")
 
     fun start() {
         Thread({ loop() }, "kavach-dns-reader").start()
@@ -81,15 +85,21 @@ class DnsProxy(
         }
     }
 
-    /** Send the raw DNS query upstream and return the raw response, or null. */
+    /**
+     * Send the raw DNS query upstream and return the raw response, or null.
+     *
+     * The socket is bound to the same address family as the target: a plain
+     * DatagramSocket is IPv4-only, so on an IPv6-primary mobile network the
+     * carrier's IPv6 resolver would be unreachable and every lookup would fail.
+     */
     private fun forward(query: ByteArray): ByteArray? {
-        val servers = upstreamProvider()
-        for (server in servers) {
+        for (server in upstreamProvider()) {
             try {
-                DatagramSocket().use { socket ->
+                val addr = InetAddress.getByName(server)
+                val bind = if (addr is Inet6Address) ANY_V6 else ANY_V4
+                DatagramSocket(0, bind).use { socket ->
                     protectSocket(socket)          // do not loop back through our tunnel
                     socket.soTimeout = 3_000
-                    val addr = InetAddress.getByName(server)
                     socket.send(DatagramPacket(query, query.size, addr, 53))
                     val respBuf = ByteArray(4096)
                     val respPacket = DatagramPacket(respBuf, respBuf.size)

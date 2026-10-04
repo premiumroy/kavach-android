@@ -112,8 +112,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val r = container.repository.updateAll()
         settingsStore.setLastUpdate(System.currentTimeMillis())
         _updateStatus.value = buildString {
-            append("Loaded ${r.totalDomains} domains from ${r.sourcesOk} sources.")
-            if (r.errors.isNotEmpty()) {
+            if (r.sourcesOk > 0) {
+                append("Loaded ${r.totalDomains} domains from ${r.sourcesOk} sources.")
+            } else {
+                append("Could not download any list - your phone has no working internet right now. ")
+                append("The built-in list is still active. Check your connection and tap Update again.")
+            }
+            if (r.errors.isNotEmpty() && r.sourcesOk > 0) {
                 append("\nSome sources failed: ")
                 append(r.errors.joinToString("; "))
             }

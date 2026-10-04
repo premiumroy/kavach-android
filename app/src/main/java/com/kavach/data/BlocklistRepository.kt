@@ -51,6 +51,12 @@ class BlocklistRepository(private val context: Context) {
         val nextExplicit = HashSet<String>()
         var sourceCount = 0
 
+        // Bundled built-in list (72k+ domains) so filtering works with no downloads.
+        runCatching {
+            context.assets.open("blocklist_builtin.txt").bufferedReader().forEachLine { line ->
+                parseLine(line)?.let { nextBlocked.add(it) }
+            }
+        }
         runCatching {
             context.assets.open("blocklist_starter.txt").bufferedReader().forEachLine { line ->
                 parseLine(line)?.let { nextBlocked.add(it) }

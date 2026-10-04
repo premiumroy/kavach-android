@@ -78,10 +78,10 @@ fun HomeScreen(vm: MainViewModel) {
                 Spacer(Modifier.height(6.dp))
                 Text("${stats.domainCount} domains loaded from ${stats.sources} downloaded lists",
                     style = MaterialTheme.typography.bodyMedium)
-                if (stats.domainCount < 1000) {
+                if (stats.domainCount < 5000) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Only the small built-in starter list is active. Tap below to download the real blocklists.",
+                        "Only the built-in list is active. Tap below to download the latest blocklists.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
