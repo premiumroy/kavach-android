@@ -18,13 +18,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub's ubuntu-latest image already ships the Android SDK
+      # (ANDROID_HOME=/usr/local/lib/android/sdk), so no SDK install step is needed.
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
 
       - name: Build debug APK
-        run: |
-          chmod +x ./gradlew || true
-          ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -32,7 +33,3 @@ jobs:
           name: kavach-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
-      # Release builds need a keystore. Add these as repository secrets and never
-      # commit the keystore itself:
-      #   KAVACH_KEYSTORE_BASE64, KAVACH_KEYSTORE_PASSWORD, KAVACH_KEY_ALIAS, KAVACH_KEY_PASSWORD
