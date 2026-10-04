@@ -120,7 +120,7 @@ class BlocklistRepository(private val context: Context) {
     suspend fun downloadSource(src: SourceEntity): Int = withContext(Dispatchers.IO) {
         val conn = (URL(src.url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
-            readTimeout = 45_000
+            readTimeout = 90_000
             setRequestProperty("User-Agent", "Kavach/0.2 (+adblocker)")
             instanceFollowRedirects = true
         }
@@ -135,9 +135,11 @@ class BlocklistRepository(private val context: Context) {
                     }
                 }
                 if (n == 0) throw IllegalStateException("no domains parsed (unrecognised format)")
+                // Copy instead of renameTo: rename can fail on some devices/filesystems
+                // (this was why the two largest lists failed to save).
                 val dest = sourceFile(src.id)
-                if (dest.exists()) dest.delete()
-                if (!tmp.renameTo(dest)) throw IllegalStateException("could not save file")
+                tmp.copyTo(dest, overwrite = true)
+                tmp.delete()
                 n
             }
         } finally {
